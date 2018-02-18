@@ -5,6 +5,9 @@ library(magrittr)
 library(pbapply)
 library(parallel)
 
+# start splash in the terminal
+# docker run -p 8050:8050 -p 5023:5023 scrapinghub/splash
+
 # create your failed string
 # this is the first hotel on page 1, if this shows outside page 1 try again
 failed <- hotel_links(search_url, 1)[1,1] %>% 
@@ -78,5 +81,5 @@ pages_11_20 <- pblapply(seq(11:20), hotel_links, url = search_url) %>%
 pages_21_30 <- pblapply(seq(21:30), hotel_links, url = search_url) %>% 
   bind_rows()
 
-pages_11_20 <- pblapply(seq(31:34), hotel_links, url = search_url) %>% 
+pages_31_34 <- pblapply(seq(31:34), hotel_links, url = search_url) %>% 
   bind_rows()
