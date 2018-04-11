@@ -1,32 +1,41 @@
 library(tidyverse)
 library(rvest)
-library(splashr)
 library(magrittr)
 library(pbapply)
 library(RSelenium)
 
-# set up Selenium server
-remDr <- remoteDriver(remoteServerAddr = "localhost", port = 4445L, browserName = "chrome")
-remDr$open()
+# start selenium in the terminal
+# docker run -d -p 4445:4444 selenium/standalone-chrome
 
 hotel_scrape <- function(url) {
+# set up Selenium server
+remDr <- remoteDriver(remoteServerAddr = "localhost", port = 4445L, browserName = "chrome")
+remDr$open(silent = TRUE)
 
+# go to url and wait for between 1 and 2 seconds
 remDr$navigate(url)
-base_html <- read_html(remDr$getPageSource()[[1]])
-  
-# base_html <- url %>%
-#  read_html()
+Sys.sleep(runif(1,1,2))
 
+# read the page in via rvest::read_html  
+base_html <- read_html(remDr$getPageSource()[[1]])
+
+# close down the selenium thing. ALWAYS DO THIS
+remDr$close()  
+
+# get the name of the hotel
 name <- base_html %>% 
   html_nodes("h1#HEADING.ui_header.h1") %>% 
   html_text()
 
+# pull a bunch of attributes from the front page
+# address needs some work for more than one line
 address <- base_html %>% html_nodes("span.detail") %>% html_text()
 ranking <- base_html %>% html_nodes("span.header_popularity.popIndexValidation") %>% html_text()
 reviews_bubble <- base_html %>% html_nodes("span.ui_bubble_rating") %>% html_attr("alt")
 reviews_total <- base_html %>% html_nodes("span.reviewCount") %>% html_text()
 reviews_range <- base_html %>% html_nodes("span.row_count.row_cell") %>% html_text()
 
+# lightly munge into rectangular data
 hotel_details <- tibble(name, url, address, ranking, 
                         review_average = reviews_bubble[1], 
                         reviews_total,
@@ -45,6 +54,7 @@ page_last <- url %>%
   .[1] %>%
   as.integer()
 
+# this is the workhorse function to read the url, split it and get top 100
 page_reviews <- function(url, page_no) {
   # split the url in two for the page insertions
   # find the split point
@@ -66,32 +76,30 @@ page_reviews <- function(url, page_no) {
   return(page)
 }
 
-
+# this takes any single page, clicks more, and reads in the reviews and data
 read_reviews <- function(url) {
   
-  reviews <- splash_local %>%
-    splash_response_body(TRUE) %>%
-    splash_enable_javascript(TRUE) %>%
-    splash_plugins(TRUE) %>%
-    splash_user_agent(ua_macos_chrome) %>%
-    splash_go(url) %>%
-    splash_wait(runif(1, 1.0, 2.0)) %>%
-    splash_html() %>%
-    html_nodes("#REVIEWS")
+  # open the remote driver
+  remDr <- remoteDriver(remoteServerAddr = "localhost", port = 4445L, browserName = "chrome")
+  remDr$open(silent = TRUE)
+
+  # go to the webpage and wait for it to load
+  remDr$navigate(url)
+  Sys.sleep(runif(1,1,2))
   
-  rev_len <- length(reviews)
-  
-  while(rev_len == 0) {  reviews <- splash_local %>%
-    splash_response_body(TRUE) %>%
-    splash_enable_javascript(TRUE) %>%
-    splash_plugins(TRUE) %>%
-    splash_user_agent(ua_macos_chrome) %>%
-    splash_go(url) %>%
-    splash_wait(runif(1, 1.0, 2.0)) %>%
-    splash_html() %>%
-    html_nodes("#REVIEWS");
-  rev_len <- length(reviews);}
-  
+  # create R objects from the website elements
+  webElem <- remDr$findElement(using = 'css selector', "span.taLnk.ulBlueLinks")
+  webElem$clickElement()
+  Sys.sleep(runif(1,1,2))
+  new_webElem <- remDr$findElement(using = 'css selector', "p.partial_entry")
+
+reviews <- read_html(remDr$getPageSource()[[1]]) %>% 
+  html_nodes("#REVIEWS")
+
+# first read the reviews themselves
+  review <- reviews %>% 
+    html_nodes("p.partial_entry") %>% html_text()
+
   id <- reviews %>%
     html_nodes(".quote a") %>%
     html_attr("id")
@@ -115,9 +123,6 @@ read_reviews <- function(url) {
     strptime("%d %b %Y")%>%
     as.POSIXct()
   
-  review <- reviews %>% 
-    html_nodes("p.partial_entry") %>% html_text()
-  
   # lookout for mgr replies
   has_mgr <- reviews %>% 
     html_nodes("div.mgrRspnInline p.partial_entry") %>% 
@@ -134,9 +139,14 @@ read_reviews <- function(url) {
     review <- review[-remove]
   }
   
+  # create the url to do the join later
   join_url <- gsub("-or[^A-Za-z-]+","",url)
   
+  # make the tibble with all the data
   df <- tibble(url = rep(join_url, 5), id, quote, rating, date, review)
+  
+  # close selenium. ALWAYS DO THIS
+  remDr$close()  
   
   return(df)
 }
@@ -149,6 +159,6 @@ details <- top_100 %>% left_join(hotel_details, by = c("url" = "url"))
 return(details)
 }
 
-possible_scrape <- possibly(hotel_scrape, otherwise = NA_real_)
+# possible_scrape <- possibly(hotel_scrape, otherwise = NA_real_)
 
-big_scrape <- map_dfr(pages_all$links[1:30], possible_scrape)
+# big_scrape <- map_dfr(pages_all$links[1:30], possible_scrape)
