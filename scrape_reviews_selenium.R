@@ -5,7 +5,11 @@ library(pbapply)
 library(RSelenium)
 
 # start selenium in the terminal
-# docker run -d -p 4445:4444 selenium/standalone-chrome
+# install: docker pull selenium/standalone-chrome
+# run: docker run -d -p 4445:4444 selenium/standalone-chrome
+# stop: docker stop $(docker ps -q)
+
+pages_all <- readRDS("data/pages_all.rds")
 
 hotel_scrape <- function(url) {
 # set up Selenium server
