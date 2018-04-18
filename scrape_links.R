@@ -4,6 +4,8 @@ library(splashr)
 library(magrittr)
 library(pbapply)
 
+# this section uses splash.
+
 # start splash in the terminal
 # docker run -p 8050:8050 -p 5023:5023 scrapinghub/splash
 # obviously this means having docker installed
