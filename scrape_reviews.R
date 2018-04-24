@@ -113,7 +113,7 @@ read_reviews <- function(url) {
   # there's probably a better way to do this but this works
   if(length(has_mgr)>0) {
     remove <- substr(has_mgr,1,10) %>% 
-      map(~grep(.x, review)) %>% 
+      map(~grep(.x, review, fixed = TRUE)) %>% 
       flatten() %>%
       unique() %>% 
       as.integer()
@@ -128,15 +128,18 @@ read_reviews <- function(url) {
   # the review is coming back with more or less than 5 reviews. the code is setup
   # to only want 5 (could fix?). so these two if clauses deal with that in a
   # known way.
-  if(length(review) < 5) {
-    fill <- rep("<blank>", 5-length(review))
+  
+  reps <- length(id)
+  
+  if(length(review) < reps) {
+    fill <- rep("<blank>", reps-length(review))
     review <- c(review,fill)
   }
-  if(length(review) > 5) {
-    review <- review[1:5]
+  if(length(review) > reps) {
+    review <- review[1:reps]
   }
   # make the tibble with all the data
-  df <- tibble(url = rep(join_url, 5), id, quote, rating, date, review)
+  df <- tibble(url = rep(join_url, reps), id, quote, rating, date, review)
  
   # send it on back
   return(df)
@@ -145,7 +148,8 @@ read_reviews <- function(url) {
 # this is the main scrape function for a whole hotel.
 # it will read all the "top of the page" information, then cycle through the first
 # 20 pages of reviews and pull those. we use pbapply because i love progress bars
-hotel_scrape <- function(url) {
+# if reviews is set to FALSE it doesn't read the reviews
+hotel_scrape <- function(url, reviews = TRUE) {
   # test for whether RSelenium session is open
   if(is.null(unlist(remDr$getSessions()[1]))) {stop("No RSelenium Session open")}
 
@@ -162,18 +166,35 @@ hotel_scrape <- function(url) {
     html_text()
 
   # pull a bunch of attributes from the front page
-  # address needs some work for more than one line, currently set to bodge
-  # levels for just get the first one. i could paste0 or something but yeah
   address <- base_html %>% 
     html_nodes("span.detail") %>% 
+    html_text() %>%
+    paste(., collapse = ";")
+  
+  geo <- base_html %>% 
+    html_nodes("img.mapImg") %>%
+    html_attr("src") %>%
+    .[1] %>%
+    substr(., str_locate(., "\\|")+1, nchar(.)) %>%
+    substr(., 1, str_locate(., "\\&")-1)
+  
+  amenities <- base_html %>% 
+    html_nodes("div.highlightedAmenity.detailListItem") %>% 
+    html_text() %>%
+    paste(., collapse = ";")
+  
+  star_rating <- base_html %>% 
+    html_nodes("div.starRating.detailListItem") %>% 
     html_text()
   
-  address <- address[1]
+  if (length(star_rating) == 0) {star_rating <- "<BLANK>"}
 
   # this is the "local area" ranking. handy
   ranking <- base_html %>% 
     html_nodes("span.header_popularity.popIndexValidation") %>% 
-    html_text()
+    html_text() 
+  
+  if (length(ranking) == 0) {ranking <- "<BLANK>"}
   
   # get the average review rating
   reviews_bubble <- base_html %>% 
@@ -192,7 +213,7 @@ hotel_scrape <- function(url) {
 
   # lightly munge into rectangular data, we split out the review rations as well
   # this creates the overall information at the hotel level
-  hotel_details <- tibble(name, url, address, ranking, 
+  hotel_details <- tibble(name, url, address, geo, amenities, star_rating, ranking, 
                         review_average = reviews_bubble[1], 
                         reviews_total,
                         excellent = reviews_range[1],
@@ -209,19 +230,24 @@ hotel_scrape <- function(url) {
     html_attr("data-page-number") %>% 
     .[1] %>% 
     as.integer()
-
-  # now to get the top 100 reviews, we've set this up with the previous functions
-  # this takes any single page, clicks more, and reads in the reviews and data
-  # we do this 20 times to get the 100. current time per run ~90 seconds
-  top_100 <- pblapply(seq(1,20), page_reviews, url = url) %>% 
-    bind_rows()
-
-  # now we append on all the hotel details from before. this is a touch inelegant
-  # as we have a tonne of repeated data however for the set up we have here
-  # i would rather return a full data frame and then deal with the repeats later
-  details <- top_100 %>% 
-    left_join(hotel_details, by = c("url" = "url"))
   
+  # here we check whether we want to get the reviews or not. if we do run through page_reviews
+  # if not then don't and shuffle hotel_details into details
+  if(reviews == TRUE) {
+    # now to get the top 100 reviews, we've set this up with the previous functions
+    # this takes any single page, clicks more, and reads in the reviews and data
+    # we do this 20 times to get the 100. current time per run ~90 seconds
+    top_100 <- pblapply(seq(1,20), page_reviews, url = url) %>% 
+      bind_rows()
+  
+    # now we append on all the hotel details from before. this is a touch inelegant
+    # as we have a tonne of repeated data however for the set up we have here
+    # i would rather return a full data frame and then deal with the repeats later
+    details <- top_100 %>% 
+      left_join(hotel_details, by = c("url" = "url"))
+  } else {
+    details <- hotel_details
+  }
   # send back the details
   return(details)
 }
@@ -269,10 +295,72 @@ remDr <- rD[["client"]]
 remDr$open(silent = TRUE)
 
 # start the scrape loop
-seq(347,1020) %>% 
+seq(963,1020) %>% 
   map(scrape_and_save)
 
 # close the session
 remDr$close()  
 
 # fin
+
+# well almost
+# let's look for any where the hotel details haven't come through
+scrape_fail <- big_scrape %>%
+  filter(is.na(name)) %>%
+  select(url) %>%
+  unique()
+
+# right let's scrape through the faileds
+rD <- rsDriver(port = 8080L, verbose = FALSE, check = FALSE)
+remDr <- rD[["client"]]
+remDr$open(silent = TRUE)
+
+hotel_rerun <- pblapply(scrape_fail$links, hotel_scrape, reviews = FALSE) %>% 
+  bind_rows()
+
+remDr$close()  
+# turns out the faileds were when there wasn't a ranking on the page. fixed that in the code
+
+# same as scrape and save but just for hotel details
+# i'll change this over to a more generic function where you can pass function name,
+# file and numbers to do it for you
+scrape_and_save2 <- function(number) {
+  # where are we up to
+  print(number)
+  
+  # check if we have the big_scrape file. if we do append if we don't create
+  if(file.exists("data/hotel_deets.rds")) {
+    
+    # load in the old file
+    load <- readRDS("data/hotel_deets.rds")
+    
+    # do a single scrape
+    scrape <- map_dfr(pages_all$links[number], hotel_scrape, reviews = FALSE)
+    
+    # push back together
+    combine <- bind_rows(load, scrape)
+    
+    # save off
+    saveRDS(combine,"data/hotel_deets.rds")
+  } else {
+    # run the very first link
+    big_scrape <- map_dfr(pages_all$links[1], hotel_scrape, reviews = FALSE)
+    
+    # save off
+    saveRDS(big_scrape, "data/hotel_deets.rds")
+  }
+}
+
+# first we set up the RSelenium session, getting to this point was UNFUN
+rD <- rsDriver(port = 8080L, verbose = FALSE, check = FALSE)
+remDr <- rD[["client"]]
+remDr$open(silent = TRUE)
+
+# start the scrape loop
+seq(760,1020) %>% 
+  map(scrape_and_save2)
+
+# close the session
+remDr$close()  
+
+
