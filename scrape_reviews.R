@@ -261,7 +261,7 @@ hotel_scrape <- function(url, reviews = TRUE) {
 # that back to your data directory.
 # this means that whenever you get an error the most you've lost is one iteration
 # we print out what number we're up to so we can restart from where it broke
-scrape_and_save <- function(number) {
+scrape_and_save_reviews <- function(number) {
   # where are we up to
   print(number)
   
@@ -295,44 +295,24 @@ remDr <- rD[["client"]]
 remDr$open(silent = TRUE)
 
 # start the scrape loop
-seq(963,1020) %>% 
-  map(scrape_and_save)
+seq(1,1020) %>% 
+  map(scrape_and_save_reviews)
 
 # close the session
 remDr$close()  
 
 # fin
 
-# well almost
-# let's look for any where the hotel details haven't come through
-scrape_fail <- big_scrape %>%
-  filter(is.na(name)) %>%
-  select(url) %>%
-  unique()
-
-# right let's scrape through the faileds
-rD <- rsDriver(port = 8080L, verbose = FALSE, check = FALSE)
-remDr <- rD[["client"]]
-remDr$open(silent = TRUE)
-
-hotel_rerun <- pblapply(scrape_fail$links, hotel_scrape, reviews = FALSE) %>% 
-  bind_rows()
-
-remDr$close()  
-# turns out the faileds were when there wasn't a ranking on the page. fixed that in the code
-
 # same as scrape and save but just for hotel details
-# i'll change this over to a more generic function where you can pass function name,
-# file and numbers to do it for you
-scrape_and_save2 <- function(number) {
+scrape_and_save_hotels <- function(number) {
   # where are we up to
   print(number)
   
   # check if we have the big_scrape file. if we do append if we don't create
-  if(file.exists("data/hotel_deets.rds")) {
+  if(file.exists("data/hotel_info.rds")) {
     
     # load in the old file
-    load <- readRDS("data/hotel_deets.rds")
+    load <- readRDS("data/hotel_info.rds")
     
     # do a single scrape
     scrape <- map_dfr(pages_all$links[number], hotel_scrape, reviews = FALSE)
@@ -341,13 +321,13 @@ scrape_and_save2 <- function(number) {
     combine <- bind_rows(load, scrape)
     
     # save off
-    saveRDS(combine,"data/hotel_deets.rds")
+    saveRDS(combine,"data/hotel_info.rds")
   } else {
     # run the very first link
     big_scrape <- map_dfr(pages_all$links[1], hotel_scrape, reviews = FALSE)
     
     # save off
-    saveRDS(big_scrape, "data/hotel_deets.rds")
+    saveRDS(big_scrape, "data/hotel_info.rds")
   }
 }
 
@@ -357,10 +337,8 @@ remDr <- rD[["client"]]
 remDr$open(silent = TRUE)
 
 # start the scrape loop
-seq(760,1020) %>% 
-  map(scrape_and_save2)
+seq(1,1020) %>% 
+  map(scrape_and_save_hotels)
 
 # close the session
 remDr$close()  
-
-
