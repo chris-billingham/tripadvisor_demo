@@ -6,6 +6,7 @@ library(RSelenium)
 
 # load in the list of pages from scrape_links.r
 pages_all <- readRDS("data/pages_all.rds")
+# note
 
 # this function takes a tripadvisor url for a venue and what review
 # page number you want. then it creates a bespoke url for the individual page
