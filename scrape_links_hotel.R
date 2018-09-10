@@ -5,10 +5,9 @@ library(magrittr)
 library(pbapply)
 
 # this section uses splash.
-
-# start splash in the terminal
-# docker run -p 8050:8050 -p 5023:5023 scrapinghub/splash
-# obviously this means having docker installed
+# start splash in docker. obviously this means having docker installed
+docker <- Sys.which("docker")
+system2(command = docker,  args = c("run -d -p 8050:8050 -p 5023:5023 scrapinghub/splash"))
 
 # create your failed string
 # this is the first hotel on page 1, if this shows outside page 1 try again
@@ -69,7 +68,7 @@ raw_links <- splash_local %>%
   return(df)
 }
 
-
+# this needs moving over to scrape and save 
 
 pages_1_10 <- pblapply(seq(1,10), hotel_links, url = search_url) %>% 
   bind_rows()
