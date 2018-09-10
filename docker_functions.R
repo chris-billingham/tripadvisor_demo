@@ -12,11 +12,11 @@ docker_images <- function() {
   columns <- images[1]
   
   # find front and back
-  repos_loc <- str_locate(columns, "REPOSITORY")
-  tag_loc <- str_locate(columns, "TAG")
-  image_id_loc <- str_locate(columns, "IMAGE ID")
-  created_loc <- str_locate(columns, "CREATED")
-  size_loc <- str_locate(columns, "SIZE")
+  repos_loc <- stringr::str_locate(columns, "REPOSITORY")
+  tag_loc <- stringr::str_locate(columns, "TAG")
+  image_id_loc <- stringr::str_locate(columns, "IMAGE ID")
+  created_loc <- stringr::str_locate(columns, "CREATED")
+  size_loc <- stringr::str_locate(columns, "SIZE")
   
   # helper function
   split_and_place <- function(char) {
@@ -37,7 +37,7 @@ docker_images <- function() {
   }
   
   # mash together
-  images_df <- map_df(images[-1], split_and_place)
+  images_df <- purrr::map_df(images[-1], split_and_place)
   return(images_df)
 }
 
@@ -51,13 +51,13 @@ docker_containers_running <- function() {
   columns <- containers[1]
   
   # find front and back
-  container_loc <- str_locate(columns, "CONTAINER ID")
-  image_loc <- str_locate(columns, "IMAGE")
-  command_loc <- str_locate(columns, "COMMAND")
-  created_loc <- str_locate(columns, "CREATED")
-  status_loc <- str_locate(columns, "STATUS")
-  ports_loc <- str_locate(columns, "PORTS")
-  names_loc <- str_locate(columns, "NAMES")
+  container_loc <- stringr::str_locate(columns, "CONTAINER ID")
+  image_loc <- stringr::str_locate(columns, "IMAGE")
+  command_loc <- stringr::str_locate(columns, "COMMAND")
+  created_loc <- stringr::str_locate(columns, "CREATED")
+  status_loc <- stringr::str_locate(columns, "STATUS")
+  ports_loc <- stringr::str_locate(columns, "PORTS")
+  names_loc <- stringr::str_locate(columns, "NAMES")
   
   # helper function
   split_and_place <- function(char) {
@@ -81,6 +81,6 @@ docker_containers_running <- function() {
     return(df)
   }
   # mash together
-  containers_df <- map_df(containers[-1], split_and_place)
+  containers_df <- purrr::map_df(containers[-1], split_and_place)
   return(containers_df)
 }
