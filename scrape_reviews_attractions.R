@@ -4,11 +4,22 @@ library(magrittr)
 library(pbapply)
 library(RSelenium)
 
+# check you've got docker installed
 docker <- Sys.which("docker")
-system2(command = docker,  args = c("run -d -p 4445:4444 selenium/standalone-chrome"))
+if(nchar(docker == 0)) {cat("Please install docker")}
 
+# pull your docker images, if you've not selenium installed then install it
+# fire up selenium
+docker_images <- system2(command = docker, args = c("images"), stdout = TRUE)
+if(sum(str_detect(docker_images, "selenium/standalone-chrome")) > 0) {
+  system2(command = docker,  args = c("run -d -p 4445:4444 selenium/standalone-chrome"))
+  } else {
+    cat("I need to deal with this bit")
+  # docker pull selenium/standalone-chrome
+  # docker run -d -p 4445:4444 selenium/standalone-chrome
+}
 # load in the list of pages from scrape_links.r
-pages_all <- readRDS("data/pages_all.rds")
+# pages_all <- readRDS("data/pages_all.rds")
 # notes
 
 # this function takes a tripadvisor url for a venue and what review
@@ -151,9 +162,9 @@ read_reviews <- function(url) {
   return(df)
 }
 
-# this is the main scrape function for a whole hotel.
+# this is the main scrape function for a whole attraction
 # it will read all the "top of the page" information, then cycle through the first
-# 20 pages of reviews and pull those. we use pbapply because i love progress bars
+# x pages of reviews and pull those. we use pbapply because i love progress bars
 # if reviews is set to FALSE it doesn't read the reviews
 attaction_scrape <- function(url, reviews = TRUE) {
   # test for whether RSelenium session is open
@@ -249,7 +260,7 @@ attaction_scrape <- function(url, reviews = TRUE) {
     # now to get the top 100 reviews, we've set this up with the previous functions
     # this takes any single page, clicks more, and reads in the reviews and data
     # we do this 20 times to get the 100. current time per run ~90 seconds
-    top_100 <- pblapply(seq(1,1000), page_reviews, url = url) %>% 
+    top_100 <- pblapply(seq(1,300), page_reviews, url = url) %>% 
       bind_rows()
   
     # now we append on all the hotel details from before. this is a touch inelegant
@@ -296,7 +307,7 @@ scrape_and_save_attaction_reviews <- function(number) {
     big_scrape <- map_dfr(pages_all$links[1], attaction_scrape)
     
     # save off
-    saveRDS(big_scrape, "data/big_scrape2.rds")
+    saveRDS(big_scrape, "data/big_scrape_attractions.rds")
   }
 }
 
