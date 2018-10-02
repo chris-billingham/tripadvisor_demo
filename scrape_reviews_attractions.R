@@ -260,7 +260,7 @@ attaction_scrape <- function(url, reviews = TRUE) {
     # now to get the top 100 reviews, we've set this up with the previous functions
     # this takes any single page, clicks more, and reads in the reviews and data
     # we do this 20 times to get the 100. current time per run ~90 seconds
-    top_100 <- pblapply(seq(1,300), page_reviews, url = url) %>% 
+    top_100 <- pblapply(seq(301,1500), page_reviews, url = url) %>% 
       bind_rows()
   
     # now we append on all the hotel details from before. this is a touch inelegant
