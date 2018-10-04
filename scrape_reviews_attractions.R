@@ -166,7 +166,7 @@ read_reviews <- function(url) {
 # it will read all the "top of the page" information, then cycle through the first
 # x pages of reviews and pull those. we use pbapply because i love progress bars
 # if reviews is set to FALSE it doesn't read the reviews
-attaction_scrape <- function(url, reviews = TRUE) {
+attaction_scrape <- function(url, start, end, reviews = TRUE) {
   # test for whether RSelenium session is open
   if(is.null(unlist(remDr$getSessions()[1]))) {stop("No RSelenium Session open")}
 
@@ -260,7 +260,9 @@ attaction_scrape <- function(url, reviews = TRUE) {
     # now to get the top 100 reviews, we've set this up with the previous functions
     # this takes any single page, clicks more, and reads in the reviews and data
     # we do this 20 times to get the 100. current time per run ~90 seconds
-    top_100 <- pblapply(seq(301,1500), page_reviews, url = url) %>% 
+    print(start)
+    print(end)
+    top_100 <- pblapply(seq(start, end), page_reviews, url = url) %>% 
       bind_rows()
   
     # now we append on all the hotel details from before. this is a touch inelegant
@@ -295,7 +297,10 @@ scrape_and_save_attaction_reviews <- function(number) {
     load <- readRDS("data/big_scrape_attractions.rds")
     
     # do a single scrape
-    scrape <- map_dfr(pages_all$links[number], attaction_scrape)
+    scrape <- pmap_dfr(list(pages_all$links[number], 
+                            pages_all$start[number],
+                            pages_all$end[number]),
+                       attaction_scrape)
     
     # push back together
     combine <- bind_rows(load, scrape)
@@ -304,13 +309,17 @@ scrape_and_save_attaction_reviews <- function(number) {
     saveRDS(combine,"data/big_scrape_attractions.rds")
   } else {
     # run the very first link
-    big_scrape <- map_dfr(pages_all$links[1], attaction_scrape)
+    big_scrape <- map_dfr(list(pages_all$links[1],
+                               pages_all$start[1],
+                               pages_all$end[1]), 
+                          attaction_scrape)
     
     # save off
     saveRDS(big_scrape, "data/big_scrape_attractions.rds")
   }
 }
 
+pboptions(nout = 1000)
 # right this is the loop
 # first we set up the RSelenium session, getting to this point was UNFUN
 remDr <- remoteDriver(remoteServerAddr = "localhost",
@@ -319,7 +328,7 @@ remDr <- remoteDriver(remoteServerAddr = "localhost",
 remDr$open(silent = TRUE)
 
 # start the scrape loop
-seq(1,5) %>% 
+seq(3,6) %>% 
   map(scrape_and_save_attaction_reviews)
 
 # close the session
