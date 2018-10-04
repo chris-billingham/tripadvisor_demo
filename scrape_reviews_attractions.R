@@ -337,7 +337,7 @@ remDr$open(silent = TRUE)
 last <- nrow(pages_all)
 
 # start the scrape loop
-seq(1, nrow) %>% 
+seq(1, last) %>% 
   walk(scrape_and_save_attaction_reviews)
 
 # close the session

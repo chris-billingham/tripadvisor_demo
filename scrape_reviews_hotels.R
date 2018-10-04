@@ -4,6 +4,8 @@ library(magrittr)
 library(pbapply)
 library(RSelenium)
 
+# this needs changing over to the attractions approach
+
 # load in the list of pages from scrape_links.r
 pages_all <- readRDS("data/pages_all.rds")
 # notes
