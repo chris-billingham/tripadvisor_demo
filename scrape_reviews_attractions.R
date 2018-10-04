@@ -4,6 +4,10 @@ library(magrittr)
 library(pbapply)
 library(RSelenium)
 
+# note: This script requires a dataframe called pages_all which has:
+# a link to the first page of the attraction, the page number you want to start at and the page number you want to end at
+# this could be pulled through automatically but is currently manual
+
 # check you've got docker installed
 docker <- Sys.which("docker")
 if(nchar(docker == 0)) {cat("Please install docker")}
@@ -17,7 +21,8 @@ if(sum(str_detect(docker_images, "selenium/standalone-chrome")) > 0) {
     cat("I need to deal with this bit")
   # docker pull selenium/standalone-chrome
   # docker run -d -p 4445:4444 selenium/standalone-chrome
-}
+  }
+
 # load in the list of pages from scrape_links.r
 # pages_all <- readRDS("data/pages_all.rds")
 # notes
@@ -28,14 +33,14 @@ if(sum(str_detect(docker_images, "selenium/standalone-chrome")) > 0) {
 page_reviews <- function(url, page_no) {
   # split the url in two for the page insertions
   # find the split point
-  pos <- str_locate(url,"Reviews-")[2]
+  pos <- str_locate(url, "Reviews-")[2]
   
   # split into front and back
   front_url <- substr(url, 1, pos)
   back_url <- substr(url, pos+1, nchar(url))
   
   # create the insert for next pages (attractions is 10 per page)
-  insert <- paste0("or", as.integer((page_no-1)*10),"-")
+  insert <- paste0("or", as.integer((page_no - 1) * 10), "-")
   
   # reconstruct the url
   page_url <- ifelse(page_no == 1,paste0(front_url, back_url), paste0(front_url, insert, back_url))
@@ -55,7 +60,7 @@ read_reviews <- function(url) {
   
   # go to the webpage and wait for it to load
   remDr$navigate(url)
-  Sys.sleep(runif(1,1,2))
+  Sys.sleep(runif(1, 1, 2))
   
   # we're now going to check whether it's possible to click ...More
   # first we're going to scrape the unadulterated page
@@ -74,7 +79,7 @@ read_reviews <- function(url) {
     
     # click it and wait
     webElem$clickElement()
-    Sys.sleep(runif(1,1,2))
+    Sys.sleep(runif(1, 1, 2))
   }
   
   # now we can read the entire page as ...More has been exposed
@@ -103,11 +108,10 @@ read_reviews <- function(url) {
   
   # annoyingly tripadvisor has this bubble_ think which turns 5 into bubble_50
   # and 3 into bubble_30 and so. let's rip that out. this could be fully piped
-  rating <- rating[grepl("bubble_",rating)]
-  rating <- gsub("[A-Za-z_ ]","",rating)
+  rating <- rating[grepl("bubble_", rating)]
+  rating <- gsub("[A-Za-z_ ]","", rating)
   rating <- as.numeric(rating)
-  rating <- rating/10
-  # rating <- rating[seq(1,19,2)]
+  rating <- rating / 10
   
   # get the date of the review and get it into a good format
   # all the dates are actual datatimes of midnight, we don't need that
@@ -166,13 +170,13 @@ read_reviews <- function(url) {
 # it will read all the "top of the page" information, then cycle through the first
 # x pages of reviews and pull those. we use pbapply because i love progress bars
 # if reviews is set to FALSE it doesn't read the reviews
-attaction_scrape <- function(url, start, end, reviews = TRUE) {
+attraction_scrape <- function(url, start, end, reviews = TRUE) {
   # test for whether RSelenium session is open
   if(is.null(unlist(remDr$getSessions()[1]))) {stop("No RSelenium Session open")}
 
   # go to url and wait for between 1 and 2 seconds
   remDr$navigate(url)
-  Sys.sleep(runif(1,1,2))
+  Sys.sleep(runif(1, 1, 2))
     
   # read the page in via rvest::read_html  
   base_html <- read_html(remDr$getPageSource()[[1]])
@@ -192,8 +196,8 @@ attaction_scrape <- function(url, start, end, reviews = TRUE) {
     html_nodes("img.mapImg") %>%
     html_attr("src") %>%
     .[1] %>%
-    substr(., str_locate(., "\\|")+1, nchar(.)) %>%
-    substr(., 1, str_locate(., "\\&")-1)
+    substr(., str_locate(., "\\|") + 1, nchar(.)) %>%
+    substr(., 1, str_locate(., "\\&") - 1)
   
   amenities <- base_html %>% 
     html_nodes("div.highlightedAmenity.detailListItem") %>% 
@@ -235,8 +239,8 @@ attaction_scrape <- function(url, start, end, reviews = TRUE) {
     html_text()
   
   # lightly munge into rectangular data, we split out the review rations as well
-  # this creates the overall information at the hotel level
-  attaction_details <- tibble(name, url, address, geo, amenities, star_rating, ranking, 
+  # this creates the overall information at the attraction level
+  attraction_details <- tibble(name, url, address, geo, amenities, star_rating, ranking, 
                         review_average = reviews_bubble[1], 
                         reviews_total,
                         excellent = reviews_range[1],
@@ -257,27 +261,28 @@ attaction_scrape <- function(url, start, end, reviews = TRUE) {
   # here we check whether we want to get the reviews or not. if we do run through page_reviews
   # if not then don't and shuffle hotel_details into details
   if(reviews == TRUE) {
-    # now to get the top 100 reviews, we've set this up with the previous functions
+    # now to get the selected range of reviews, between pages start and end
     # this takes any single page, clicks more, and reads in the reviews and data
-    # we do this 20 times to get the 100. current time per run ~90 seconds
+ 
+    # checks
     print(start)
     print(end)
-    top_100 <- pblapply(seq(start, end), page_reviews, url = url) %>% 
+    reviews_select <- pblapply(seq(start, end), page_reviews, url = url) %>% 
       bind_rows()
   
-    # now we append on all the hotel details from before. this is a touch inelegant
+    # now we append on all the attraction details from before. this is a touch inelegant
     # as we have a tonne of repeated data however for the set up we have here
     # i would rather return a full data frame and then deal with the repeats later
-    details <- top_100 %>% 
-      left_join(attaction_details, by = c("url" = "url"))
+    details <- reviews_select %>% 
+      left_join(attraction_details, by = c("url" = "url"))
   } else {
-    details <- attaction_details
+    details <- attraction_details
   }
   # send back the details
   return(details)
 }
 
-# unfortuantely webscraping has a tendancy to error for various reasons
+# unfortunately webscraping has a tendancy to error for various reasons
 # when you're using map/apply an error can kill your entire pipeline
 # with purrr you could use possible/safely however because we like progress
 # bars i've used pblapply which i don't know how to error out of
@@ -291,10 +296,10 @@ scrape_and_save_attaction_reviews <- function(number) {
   print(number)
   
   # check if we have the big_scrape file. if we do append if we don't create
-  if(file.exists("data/big_scrape_attractions.rds")) {
+  if(file.exists("data/attractions_scrape.rds")) {
     
     # load in the old file
-    load <- readRDS("data/big_scrape_attractions.rds")
+    load <- readRDS("data/attractions_scrape.rds")
     
     # do a single scrape
     scrape <- pmap_dfr(list(pages_all$links[number], 
@@ -306,30 +311,34 @@ scrape_and_save_attaction_reviews <- function(number) {
     combine <- bind_rows(load, scrape)
     
     # save off
-    saveRDS(combine,"data/big_scrape_attractions.rds")
+    saveRDS(combine,"data/attractions_scrape.rds")
   } else {
     # run the very first link
-    big_scrape <- map_dfr(list(pages_all$links[1],
+    big_scrape <- pmap_dfr(list(pages_all$links[1],
                                pages_all$start[1],
                                pages_all$end[1]), 
                           attaction_scrape)
     
     # save off
-    saveRDS(big_scrape, "data/big_scrape_attractions.rds")
+    saveRDS(big_scrape, "data/attractions_scrape.rds")
   }
 }
 
+# set pboptions so we get more "ticks" of the clock on the progress bar
 pboptions(nout = 1000)
-# right this is the loop
+
 # first we set up the RSelenium session, getting to this point was UNFUN
 remDr <- remoteDriver(remoteServerAddr = "localhost",
                       port = 4445L,
                       browserName = "chrome")
 remDr$open(silent = TRUE)
 
+# find the length of pages_all
+last <- nrow(pages_all)
+
 # start the scrape loop
-seq(3,6) %>% 
-  map(scrape_and_save_attaction_reviews)
+seq(1, nrow) %>% 
+  walk(scrape_and_save_attaction_reviews)
 
 # close the session
 remDr$close()  

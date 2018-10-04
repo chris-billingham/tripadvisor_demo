@@ -1,3 +1,5 @@
-all_hotels.rds
-big_scrape.rds
-hotel_deets.rds
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+data
